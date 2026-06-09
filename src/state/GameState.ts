@@ -4,6 +4,7 @@
 
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
+import { Boss } from '../entities/Boss';
 import { Bullet } from '../entities/Bullet';
 import type { InputState, GameStateSnapshot, ClosestEnemy } from '../types/entities';
 import { checkAABBCollision, calculateDistance, clamp } from '../physics/CollisionDetection';
@@ -11,6 +12,7 @@ import { checkAABBCollision, calculateDistance, clamp } from '../physics/Collisi
 export class GameState {
   private player: Player;
   private enemies: Enemy[] = [];
+  private bosses: Boss[] = [];
   private bullets: Bullet[] = [];
 
   private canvasWidth: number;
@@ -28,6 +30,7 @@ export class GameState {
   // Wave system
   private waveNumber: number = 1;
   private waveEnemyCount: number = 5;
+  private lastBossWave: number = 0;
 
   constructor(canvasWidth: number, canvasHeight: number) {
     this.canvasWidth = canvasWidth;
@@ -73,18 +76,26 @@ export class GameState {
       enemy.update(deltaTime);
     }
 
-    // Spawn enemies
+    // Update bosses
+    for (const boss of this.bosses) {
+      boss.update(deltaTime);
+    }
+
+    // Spawn enemies / bosses
     this.spawnEnemies(currentTime);
 
-    // Collision detection: bullets vs enemies
+    // Collision detection
     this.checkBulletEnemyCollisions();
+    this.checkBulletBossCollisions();
 
-    // Garbage collection: remove off-screen entities
+    // Garbage collection
     this.bulletGarbageCollection();
     this.enemyGarbageCollection();
+    this.bossGarbageCollection();
 
-    // Check if player is hit by enemies (simple collision)
+    // Player collision
     this.checkPlayerEnemyCollisions();
+    this.checkPlayerBossCollisions();
 
     // Check if game is over
     if (!this.player.isAlive()) {
@@ -104,6 +115,12 @@ export class GameState {
    * Spawn enemies at random intervals
    */
   private spawnEnemies(currentTime: number): void {
+    // Spawn boss every 5 waves if none alive
+    if (this.waveNumber % 5 === 0 && this.waveNumber !== this.lastBossWave && this.bosses.length === 0) {
+      this.bosses.push(new Boss(this.canvasWidth, currentTime, this.waveNumber));
+      this.lastBossWave = this.waveNumber;
+    }
+
     if (this.enemies.length >= this.maxEnemies) return;
     if (currentTime - this.lastEnemySpawnTime < this.enemySpawnInterval) return;
 
@@ -131,26 +148,47 @@ export class GameState {
    * Check collisions between bullets and enemies
    */
   private checkBulletEnemyCollisions(): void {
-      for (let i = this.bullets.length - 1; i >= 0; i--) {
+    for (let i = this.bullets.length - 1; i >= 0; i--) {
       const bullet = this.bullets[i];
 
       for (let j = this.enemies.length - 1; j >= 0; j--) {
         const enemy = this.enemies[j];
 
         if (checkAABBCollision(bullet.getBoundingBox(), enemy.getBoundingBox())) {
-          // Hit detected
           enemy.takeDamage(bullet.getDamage());
-
-          // Remove bullet
           this.bullets.splice(i, 1);
 
-          // Remove enemy if dead
           if (!enemy.isAlive()) {
             this.enemies.splice(j, 1);
-            this.score += 10; // Points for killing enemy
+            this.score += 10;
           }
 
-          break; // Bullet can only hit one enemy
+          break;
+        }
+      }
+    }
+  }
+
+  /**
+   * Check collisions between bullets and bosses
+   */
+  private checkBulletBossCollisions(): void {
+    for (let i = this.bullets.length - 1; i >= 0; i--) {
+      const bullet = this.bullets[i];
+
+      for (let j = this.bosses.length - 1; j >= 0; j--) {
+        const boss = this.bosses[j];
+
+        if (checkAABBCollision(bullet.getBoundingBox(), boss.getBoundingBox())) {
+          boss.takeDamage(bullet.getDamage());
+          this.bullets.splice(i, 1);
+
+          if (!boss.isAlive()) {
+            this.bosses.splice(j, 1);
+            this.score += 100;
+          }
+
+          break;
         }
       }
     }
@@ -164,9 +202,21 @@ export class GameState {
 
     for (const enemy of this.enemies) {
       if (checkAABBCollision(playerBBox, enemy.getBoundingBox())) {
-        // Collision damage
         this.player.takeDamage(10);
-        this.score += 5; // Bonus points for surviving hit
+        this.score += 5;
+      }
+    }
+  }
+
+  /**
+   * Check collisions between player and bosses
+   */
+  private checkPlayerBossCollisions(): void {
+    const playerBBox = this.player.getBoundingBox();
+
+    for (const boss of this.bosses) {
+      if (checkAABBCollision(playerBBox, boss.getBoundingBox())) {
+        this.player.takeDamage(25);
       }
     }
   }
@@ -186,21 +236,40 @@ export class GameState {
   }
 
   /**
+   * Remove bosses that are off-screen or dead
+   */
+  private bossGarbageCollection(): void {
+    this.bosses = this.bosses.filter((boss) => !boss.isOffScreen(this.canvasHeight) && boss.isAlive());
+  }
+
+  /**
    * Get the 5 closest enemies to the player
    */
   private getClosestEnemies(count: number = 5): ClosestEnemy[] {
-    const distances = this.enemies.map((enemy) => ({
-      x: enemy.position.x,
-      y: enemy.position.y,
-      distance: calculateDistance(
-        this.player.position.x + this.player.width / 2,
-        this.player.position.y + this.player.height / 2,
-        enemy.position.x + enemy.width / 2,
-        enemy.position.y + enemy.height / 2
-      ),
-    }));
+    const allThreats = [
+      ...this.enemies.map((e) => ({
+        x: e.position.x,
+        y: e.position.y,
+        distance: calculateDistance(
+          this.player.position.x + this.player.width / 2,
+          this.player.position.y + this.player.height / 2,
+          e.position.x + e.width / 2,
+          e.position.y + e.height / 2
+        ),
+      })),
+      ...this.bosses.map((b) => ({
+        x: b.position.x,
+        y: b.position.y,
+        distance: calculateDistance(
+          this.player.position.x + this.player.width / 2,
+          this.player.position.y + this.player.height / 2,
+          b.position.x + b.width / 2,
+          b.position.y + b.height / 2
+        ),
+      })),
+    ];
 
-    return distances.sort((a, b) => a.distance - b.distance).slice(0, count);
+    return allThreats.sort((a, b) => a.distance - b.distance).slice(0, count);
   }
 
   /**
@@ -245,6 +314,10 @@ export class GameState {
     return this.enemies;
   }
 
+  getBosses(): Boss[] {
+    return this.bosses;
+  }
+
   getBullets(): Bullet[] {
     return this.bullets;
   }
@@ -259,11 +332,13 @@ export class GameState {
   reset(): void {
     this.player = new Player(this.canvasWidth / 2 - 15, this.canvasHeight - 80);
     this.enemies = [];
+    this.bosses = [];
     this.bullets = [];
     this.isGameRunning = true;
     this.score = 0;
     this.lastEnemySpawnTime = 0;
     this.waveNumber = 1;
     this.enemySpawnCount = 0;
+    this.lastBossWave = 0;
   }
 }
