@@ -70,6 +70,7 @@ export class Engine {
   private render(): void {
     const player = this.gameState.getPlayer();
     const enemies = this.gameState.getEnemies();
+    const bosses = this.gameState.getBosses();
     const bullets = this.gameState.getBullets();
     const score = this.gameState.getScore();
 
@@ -79,6 +80,7 @@ export class Engine {
     // Draw game entities
     this.renderer.drawPlayer(player);
     this.renderer.drawEnemies(enemies);
+    this.renderer.drawBosses(bosses);
     this.renderer.drawBullets(bullets);
 
     // Draw HUD

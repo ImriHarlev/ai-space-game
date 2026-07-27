@@ -4,6 +4,7 @@
 
 import { Player } from '../entities/Player';
 import { Enemy } from '../entities/Enemy';
+import { Boss } from '../entities/Boss';
 import { Bullet } from '../entities/Bullet';
 
 export class Renderer {
@@ -65,6 +66,15 @@ export class Renderer {
   drawEnemies(enemies: Enemy[]): void {
     for (const enemy of enemies) {
       enemy.draw(this.ctx);
+    }
+  }
+
+  /**
+   * Draw all bosses
+   */
+  drawBosses(bosses: Boss[]): void {
+    for (const boss of bosses) {
+      boss.draw(this.ctx);
     }
   }
 

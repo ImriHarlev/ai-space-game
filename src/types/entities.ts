@@ -65,6 +65,15 @@ export interface EnemyData extends Entity {
 }
 
 /**
+ * Represents a boss enemy
+ */
+export interface BossData extends Entity {
+  health: number;
+  maxHealth: number;
+  spawnTime: number;
+}
+
+/**
  * Represents a bullet projectile
  */
 export interface BulletData extends Entity {
